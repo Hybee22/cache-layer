@@ -27,7 +27,7 @@ class PartitionCache extends Cache {
 
   async delete(key) {
     const shard = this.getShard(key);
-    await shard.delete(key);
+    await shard.del(key);
   }
 }
 

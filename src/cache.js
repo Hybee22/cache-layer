@@ -13,8 +13,8 @@ class Cache {
     throw new Error("Method 'set' must be implemented");
   }
 
-  async delete(key) {
-    throw new Error("Method 'delete' must be implemented");
+  async del(key) {
+    throw new Error("Method 'del' must be implemented");
   }
 
   async clear() {

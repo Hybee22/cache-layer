@@ -57,8 +57,8 @@ class CacheManager {
     return await this.cache.set(key, value, ttl);
   }
 
-  async delete(key) {
-    return await this.cache.delete(key);
+  async del(key) {
+    return await this.cache.del(key);
   }
 
   async clear() {

@@ -42,7 +42,7 @@ class RedisCache extends Cache {
     }
   }
 
-  async delete(key) {
+  async del(key) {
     return new Promise((resolve, reject) => {
       this.client.del(key, (err, response) => {
         if (err) return reject(err);
