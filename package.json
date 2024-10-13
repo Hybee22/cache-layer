@@ -12,7 +12,8 @@
   "dependencies": {
     "express": "^4.21.1",
     "ioredis": "^5.4.1",
-    "memcached": "^2.2.2"
+    "memcached": "^2.2.2",
+    "winston": "^3.15.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

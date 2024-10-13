@@ -1,5 +1,6 @@
 const express = require("express");
 const CacheManagerWithPromiseCaching = require("./helpers/cache-with-promise");
+const logger = require("./logger");
 const app = express();
 
 // Create cache manager
@@ -30,6 +31,7 @@ app.get("/data/:id", async (req, res) => {
     );
     res.json(data);
   } catch (error) {
+    logger.error("Error fetching data:", error);
     res.status(500).json({ message: "Something went wrong", error });
   }
 });
@@ -52,6 +54,7 @@ app.put("/data/:id", async (req, res) => {
     );
     res.json({ message: "Data updated", data: updatedData });
   } catch (error) {
+    logger.error("Error updating data:", error);
     res.status(500).json({ message: "Something went wrong", error });
   }
 });
@@ -70,7 +73,7 @@ app.delete("/data/:id", async (req, res) => {
     await cacheManager.invalidateOnDelete(`data:${id}`);
     res.json({ message: "Data deleted" });
   } catch (error) {
-    console.log(error);
+    logger.error("Error deleting data:", error);
     res.status(500).json({ message: "Something went wrong", error });
   }
 });
@@ -90,7 +93,7 @@ async function updateDataInDatabase(id, body) {
 
 async function deleteDataFromDatabase(id) {
   // Simulate a DB delete
-  console.log(`Deleted data for ID: ${id}`);
+  logger.info(`Deleted data for ID: ${id}`);
   return true;
 }
 
@@ -99,5 +102,5 @@ async function deleteDataFromDatabase(id) {
  */
 const port = 3000;
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  logger.info(`Server is running on port ${port}`);
 });

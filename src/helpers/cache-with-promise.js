@@ -1,4 +1,5 @@
 const CacheManager = require("../cache-manager");
+const logger = require("../logger");
 
 class CacheManagerWithPromiseCaching extends CacheManager {
   /**
@@ -13,11 +14,11 @@ class CacheManagerWithPromiseCaching extends CacheManager {
   async cachePromise(key, promiseFn, ttl) {
     const cachedValue = await this.get(key);
     if (cachedValue !== null) {
-      console.log("Cache hit for key:", key);
+      logger.info(`Cache hit for key: ${key}`);
       return cachedValue;
     }
 
-    console.log("Cache miss for key:", key);
+    logger.info(`Cache miss for key: ${key}`);
     const value = await promiseFn();
     await this.set(key, value, ttl);
     return value;
@@ -32,7 +33,7 @@ class CacheManagerWithPromiseCaching extends CacheManager {
    * @returns {Promise<any>}
    */
   async invalidateOnUpdate(key, promiseFn, ttl) {
-    console.log("Invalidating cache for update on key:", key);
+    logger.info("Invalidating cache for update on key:", key);
 
     const newValue = await promiseFn(); // Fetch updated value
     await this.set(key, newValue, ttl); // Update cache with new value
@@ -45,7 +46,7 @@ class CacheManagerWithPromiseCaching extends CacheManager {
    * @returns {Promise<void>}
    */
   async invalidateOnDelete(key) {
-    console.log("Invalidating cache for delete on key:", key);
+    logger.info("Invalidating cache for delete on key:", key);
     await this.del(key); // Invalidate the cache by deleting the key
   }
 }

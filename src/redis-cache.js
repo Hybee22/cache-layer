@@ -1,16 +1,17 @@
 const Cache = require("./cache");
 const Redis = require("ioredis");
+const logger = require("./logger");
 
 const client = (redisURL) => {
   let redis = new Redis(`redis://${redisURL}`);
 
   redis.on("connect", () => {
-    console.info("Connected to redis host");
+    logger.info("Connected to redis host");
     redis.flushdb((err, succeeded) => {
       if (err) {
-        console.error("Error flushing database:", err);
+        logger.error("Error flushing database:", err);
       } else {
-        console.info("Database flushed:", succeeded);
+        logger.info("Database flushed:", succeeded);
       }
     });
   });

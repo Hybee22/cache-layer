@@ -1,5 +1,6 @@
 const Memcached = require("memcached");
 const Cache = require("./cache");
+const logger = require("./logger");
 
 // Memcached implementation
 class MemcachedCache extends Cache {
@@ -13,10 +14,10 @@ class MemcachedCache extends Cache {
     return new Promise((resolve, reject) => {
       this.memcached.stats((err, stats) => {
         if (err) {
-          console.error("Error connecting to Memcached:", err);
+          logger.error("Error connecting to Memcached:", err);
           reject(err);
         } else {
-          console.log("Successfully connected to Memcached");
+          logger.info("Successfully connected to Memcached");
           resolve(true);
         }
       });
