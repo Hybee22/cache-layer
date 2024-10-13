@@ -36,7 +36,7 @@ class RedisCache extends Cache {
   async set(key, value, ttl = 0) {
     const stringValue = JSON.stringify(value);
     if (ttl > 0) {
-      this.client.setex(key, ttl / 1000, stringValue);
+      this.client.setex(key, ttl, stringValue);
     } else {
       this.client.set(key, stringValue);
     }
