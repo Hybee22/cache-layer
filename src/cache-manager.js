@@ -2,6 +2,7 @@ const InMemoryCache = require("./in-memory-cache");
 const RedisCache = require("./redis-cache");
 const CompressedCache = require("./compression-cache");
 const PartitionCache = require("./partition-cache");
+const MemcachedCache = require("./memcached-cache");
 
 class CacheManager {
   /**
@@ -20,12 +21,16 @@ class CacheManager {
     compression = false,
     partitioning = false,
     redisOptions = { client: "localhost:6379", nodes: [] },
+    memcachedOptions = { client: "localhost:11211" },
   }) {
     let cache;
 
     switch (backend) {
       case "redis":
         cache = new RedisCache(redisOptions.client);
+        break;
+      case "memcached":
+        cache = new MemcachedCache(memcachedOptions.client);
         break;
       case "memory":
       default:
@@ -41,6 +46,7 @@ class CacheManager {
     }
 
     this.cache = cache;
+    if (backend === "memcached") this.cache.checkConnection();
   }
 
   async get(key) {

@@ -4,11 +4,11 @@ const app = express();
 
 // Create cache manager
 const cacheManager = new CacheManagerWithPromiseCaching({
-  backend: "redis",
+  backend: "memcached",
   redisOptions: {
-    client: "localhost:6379",
+    client: "localhost:11211",
   },
-  compression: true,
+  compression: false,
 });
 
 // Example API endpoint with caching
@@ -22,7 +22,7 @@ app.get("/data/:id", async (req, res) => {
         // Simulate database fetch
         return await getDataFromDatabase(id);
       },
-      60000 // Cache for 60 seconds
+      60 // Cache for 60 seconds
     );
     res.json(data);
   } catch (error) {
