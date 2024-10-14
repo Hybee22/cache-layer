@@ -1,30 +1,20 @@
 const winston = require("../logger");
 const config = require("./config");
-const RedisCache = require("../redis-cache");
+const redisPool = require("../redis-pool");
 
-const redisCache = new RedisCache(`${config.REDIS_HOST}:${config.REDIS_PORT}`);
+let publisher;
 
-// Redis configuration for retry strategy
-const redisConfig = {
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    winston.warn(`Reconnecting attempt ${times}...`);
-    return delay;
-  },
-};
-
-// Get the existing Redis connection
-const redisConnection = redisCache.getClient();
-
-// Duplicate the connection for the publisher
-const publisher = redisConnection.duplicate();
-
-// Apply the retry strategy to the duplicated connection
-publisher.options.retryStrategy = redisConfig.retryStrategy;
+async function getPublisher() {
+  if (!publisher) {
+    publisher = await redisPool.getDuplicatedConnection();
+  }
+  return publisher;
+}
 
 async function publishMessage(message) {
+  const pub = await getPublisher();
   try {
-    const messageId = await publisher.xadd(
+    const messageId = await pub.xadd(
       config.STREAM_KEY,
       "MAXLEN",
       "~",

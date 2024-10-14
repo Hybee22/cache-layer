@@ -1,5 +1,6 @@
 const CacheManager = require("../cache-manager");
 const logger = require("../logger");
+const performanceMonitor = require("../monitoring/performance-monitor");
 
 class CacheManagerWithPromiseCaching extends CacheManager {
   /**
@@ -12,16 +13,21 @@ class CacheManagerWithPromiseCaching extends CacheManager {
    * @returns {Promise<any>}
    */
   async cachePromise(key, promiseFn, ttl) {
-    const cachedValue = await this.get(key);
-    if (cachedValue !== null) {
-      logger.info(`Cache hit for key: ${key}`);
-      return cachedValue;
-    }
+    try {
+      const cachedValue = await this.cache.get(key);
+      if (cachedValue !== null) {
+        performanceMonitor.recordCacheHit();
+        return cachedValue;
+      }
 
-    logger.info(`Cache miss for key: ${key}`);
-    const value = await promiseFn();
-    await this.set(key, value, ttl);
-    return value;
+      performanceMonitor.recordCacheMiss();
+      const value = await promiseFn();
+      await this.cache.set(key, value, ttl);
+      return value;
+    } catch (error) {
+      logger.error(`Error in cachePromise for key ${key}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -36,7 +42,7 @@ class CacheManagerWithPromiseCaching extends CacheManager {
     logger.info("Invalidating cache for update on key:", key);
 
     const newValue = await promiseFn(); // Fetch updated value
-    await this.set(key, newValue, ttl); // Update cache with new value
+    await this.cache.set(key, newValue, ttl); // Update cache with new value
     return newValue; // Return updated value
   }
 
@@ -47,7 +53,7 @@ class CacheManagerWithPromiseCaching extends CacheManager {
    */
   async invalidateOnDelete(key) {
     logger.info("Invalidating cache for delete on key:", key);
-    await this.del(key); // Invalidate the cache by deleting the key
+    await this.cache.del(key); // Invalidate the cache by deleting the key
   }
 }
 

@@ -1,32 +1,22 @@
 const winston = require("../logger");
 const config = require("./config");
-const RedisCache = require("../redis-cache");
+const redisPool = require("../redis-pool");
+const logger = require("../logger");
 
-const redisCache = new RedisCache(`${config.REDIS_HOST}:${config.REDIS_PORT}`);
-
-// Redis configuration for retry strategy
-const redisConfig = {
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    winston.warn(`Reconnecting attempt ${times}...`);
-    return delay;
-  },
-};
-
-// Get the existing Redis connection
-const redisConnection = redisCache.getClient();
-
-// Duplicate the connection for the subscriber
-const subscriber = redisConnection.duplicate();
-
-// Apply the retry strategy to the duplicated connection
-subscriber.options.retryStrategy = redisConfig.retryStrategy;
-
+let subscriber;
 const CONSUMER_NAME = `consumer-${process.pid}`;
 
+async function getSubscriber() {
+  if (!subscriber) {
+    subscriber = await redisPool.getDuplicatedConnection();
+  }
+  return subscriber;
+}
+
 async function setupConsumerGroup() {
+  const sub = await getSubscriber();
   try {
-    await subscriber.xgroup(
+    await sub.xgroup(
       "CREATE",
       config.STREAM_KEY,
       config.CONSUMER_GROUP,
@@ -42,8 +32,9 @@ async function setupConsumerGroup() {
 }
 
 async function readHistoricalMessages() {
+  const sub = await getSubscriber();
   try {
-    const messages = await subscriber.xread(
+    const messages = await sub.xread(
       "STREAMS",
       config.STREAM_KEY,
       "0-0"
@@ -59,49 +50,66 @@ async function readHistoricalMessages() {
   }
 }
 
-async function consumeMessages(messageHandler) {
-  while (true) {
+// New function for message replay
+async function replayMessages(fromTimestamp) {
+  const sub = await getSubscriber();
+  try {
+    const messages = await sub.xrange(
+      config.STREAM_KEY,
+      fromTimestamp,
+      "+",
+      "COUNT",
+      1000
+    );
+
+    for (const [messageId, [, message]] of messages) {
+      winston.info(`Replayed message: ${message}, ID: ${messageId}`);
+      // Process the replayed message here
+    }
+
+    winston.info(`Replayed ${messages.length} messages from ${fromTimestamp}`);
+  } catch (error) {
+    winston.error(`Error replaying messages: ${error.message}`);
+  }
+}
+
+async function startSubscriber() {
+  await setupConsumerGroup();
+  await readHistoricalMessages();
+
+  const sub = await getSubscriber();
+  let isRunning = true;
+  while (isRunning) {
     try {
-      const results = await subscriber.xreadgroup(
+      const result = await sub.xreadgroup(
         "GROUP",
         config.CONSUMER_GROUP,
         CONSUMER_NAME,
         "BLOCK",
-        2000,
+        5000,
         "STREAMS",
         config.STREAM_KEY,
         ">"
       );
 
-      if (results) {
-        const [[, messages]] = results;
-        for (const [messageId, [, message]] of messages) {
-          winston.info(`Received message: ${message}, ID: ${messageId}`);
-          await messageHandler(message);
-          await subscriber.xack(
-            config.STREAM_KEY,
-            config.CONSUMER_GROUP,
-            messageId
-          );
+      if (result && result.length > 0) {
+          const [streamName, messages] = result[0];
+          logger.info(`Received messages from stream: ${streamName}`);
+        if (messages && messages.length > 0) {
+          for (const [messageId, fields] of messages) {
+            const message = fields[1];  // Assuming message is the second item in fields
+            winston.info(`Received message: ${message}, ID: ${messageId}`);
+            // Process the message here
+          }
         }
       }
     } catch (error) {
-      winston.error(`Error consuming messages: ${error.message}`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      winston.error(`Error reading messages: ${error.message}`);
+      if (error.message.includes('CRITICAL_ERROR')) {
+        isRunning = false;
+      }
     }
   }
 }
 
-async function startSubscriber(messageHandler) {
-  await setupConsumerGroup();
-  await readHistoricalMessages();
-  await consumeMessages(messageHandler);
-}
-
-process.on("SIGINT", async () => {
-  winston.info("Shutting down subscriber...");
-  await subscriber.quit();
-  process.exit(0);
-});
-
-module.exports = { startSubscriber };
+module.exports = { startSubscriber, replayMessages };

@@ -3,18 +3,23 @@ const RedisCache = require("./redis-cache");
 const CompressedCache = require("./compression-cache");
 const PartitionCache = require("./partition-cache");
 const MemcachedCache = require("./memcached-cache");
+const LRUCache = require('./lru-cache');
+const RedisLRUCache = require('./redis-lru-cache');
 
 class CacheManager {
   /**
    * Creates a new instance of CacheManager, which will use the chosen backend with optional compression and partitioning.
    *
    * @param {Object} [options={}] - Options object with the following properties:
-   *   @param {string} [options.backend="memory"] - The cache backend to use. Available options are "memory" and "redis".
+   *   @param {string} [options.backend="memory"] - The cache backend to use. Available options are "memory", "redis", and "lru".
    *   @param {boolean} [options.compression=false] - If true, the cache will use compression.
    *   @param {boolean} [options.partitioning=false] - If true, the cache will use partitioning.
    *   @param {Object} [options.redisOptions={}] - Options object for the chosen backend, with the following properties:
    *     @param {string} [options.redisOptions.client="localhost:6379"] - The Redis client connection string.
    *     @param {string[]} [options.redisOptions.nodes=[]] - List of Redis nodes for partitioning.
+   *   @param {Object} [options.lruOptions={}] - Options object for the LRU cache, with the following property:
+   *     @param {number} [options.lruOptions.capacity=100] - The capacity of the LRU cache.
+   *     @param {boolean} [options.lruOptions.persistent=false] - If true, the LRU cache will use Redis.
    */
   constructor({
     backend = "memory",
@@ -22,6 +27,7 @@ class CacheManager {
     partitioning = false,
     redisOptions = { client: "localhost:6379", nodes: [] },
     memcachedOptions = { client: "localhost:11211" },
+    lruOptions = { capacity: 100, persistent: false }, // Updated options for LRU cache
   }) {
     let cache;
 
@@ -31,6 +37,13 @@ class CacheManager {
         break;
       case "memcached":
         cache = new MemcachedCache(memcachedOptions.client);
+        break;
+      case "lru":
+        if (lruOptions.persistent) {
+          cache = new RedisLRUCache(redisOptions.client, lruOptions.capacity);
+        } else {
+          cache = new LRUCache(lruOptions.capacity);
+        }
         break;
       case "memory":
       default:
