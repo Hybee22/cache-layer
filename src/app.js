@@ -1,6 +1,9 @@
 const express = require("express");
 const CacheManagerWithPromiseCaching = require("./helpers/cache-with-promise");
 const logger = require("./logger");
+const { publishMessage } = require("./redis-streams/publisher");
+const { startSubscriber } = require("./redis-streams/subscriber");
+
 const app = express();
 
 // Create cache manager
@@ -97,10 +100,38 @@ async function deleteDataFromDatabase(id) {
   return true;
 }
 
+// Example route that publishes a message to the Redis Stream
+app.post("/publish", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+    const messageId = await publishMessage(message);
+    res.json({ success: true, messageId });
+  } catch (error) {
+    logger.error(`Error publishing message: ${error.message}`);
+    res.status(500).json({ error: "Failed to publish message" });
+  }
+});
+
+// Start the subscriber
+startSubscriber(async (message) => {
+  logger.info(`Processing received message: ${message}`);
+  // Add your message processing logic here
+});
+
 /**
  * Start the server
  */
 const port = 3000;
 app.listen(port, () => {
   logger.info(`Server is running on port ${port}`);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  logger.info("Shutting down server...");
+  // Add any cleanup logic here if needed
+  process.exit(0);
 });

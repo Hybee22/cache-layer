@@ -25,6 +25,10 @@ class RedisCache extends Cache {
     this.client = client(redisClient);
   }
 
+  getClient() {
+    return this.client;
+  }
+
   async get(key) {
     return new Promise((resolve, reject) => {
       this.client.get(key, (err, data) => {
