@@ -1,6 +1,6 @@
 const express = require("express");
 const logger = require("./logger");
-const { publishMessage } = require("./redis-streams/publisher");
+const { publishMessage, closePublisher } = require("./redis-streams/publisher");
 const {
   startSubscriber,
   replayMessages,
@@ -8,8 +8,12 @@ const {
 const CacheManagerWithPromiseCaching = require("./helpers/cache-with-promise");
 const redisPool = require("./redis-pool");
 const performanceMonitor = require("./monitoring/performance-monitor");
+const loggingMiddleware = require("./middleware/logging");
 
 const app = express();
+
+app.use(express.json());
+app.use(loggingMiddleware);
 
 // Create cache manager
 const cacheManager = new CacheManagerWithPromiseCaching({
@@ -20,8 +24,6 @@ const cacheManager = new CacheManagerWithPromiseCaching({
   },
   compression: false,
 });
-
-app.use(express.json());
 
 // Middleware to measure API response times
 app.use((req, res, next) => {
@@ -48,30 +50,32 @@ app.get("/data/:id", async (req, res) => {
       },
       60 // Cache for 60 seconds
     );
+    req.logger.info('Data fetched successfully', { id });
     res.json(data);
   } catch (error) {
-    logger.error("Error fetching data:", error);
-    res.status(500).json({ message: "Something went wrong", error });
+    req.logger.error('Error fetching data', { id, error });
+    res.status(500).json({ message: "Something went wrong", error: error.message });
   }
 });
 
 /**
- * PUT - Update data and invalidate cache
+ * PUT - Update data with write-through caching
  */
 app.put("/data/:id", async (req, res) => {
   const { id } = req.params;
   const body = req.body;
 
   try {
-    const updatedData = await cacheManager.invalidateOnUpdate(
+    await cacheManager.writeThroughCache(
       `data:${id}`,
-      async () => {
+      body,
+      async (data) => {
         // Simulate database update
-        return await updateDataInDatabase(id, body);
+        return await updateDataInDatabase(id, data);
       },
-      60 // Reset cache TTL to 60 seconds
+      60 // Cache TTL in seconds
     );
-    res.json({ message: "Data updated", data: updatedData });
+    res.json({ message: "Data updated", data: body });
   } catch (error) {
     logger.error("Error updating data:", error);
     res.status(500).json({ message: "Something went wrong", error });
@@ -116,6 +120,30 @@ app.post("/replay-messages", async (req, res) => {
 });
 
 /**
+ * POST - Create data with write-behind caching
+ */
+app.post("/data", async (req, res) => {
+  const body = req.body;
+
+  try {
+    const id = generateId(); // Implement this function to generate a unique ID
+    await cacheManager.writeBehindCache(
+      `data:${id}`,
+      body,
+      async (data) => {
+        // Simulate database insert
+        return await insertDataIntoDatabase(id, data);
+      },
+      60 // Cache TTL in seconds
+    );
+    res.status(201).json({ message: "Data created", id, data: body });
+  } catch (error) {
+    logger.error("Error creating data:", error);
+    res.status(500).json({ message: "Something went wrong", error });
+  }
+});
+
+/**
  * Simulated DB functions
  */
 async function getDataFromDatabase(id) {
@@ -123,15 +151,25 @@ async function getDataFromDatabase(id) {
   return { id, name: `Data for ${id}` };
 }
 
-async function updateDataInDatabase(id, body) {
-  // Simulate a DB update
-  return { id, ...body, name: `Updated ${id}: ${body?.name}` };
+async function updateDataInDatabase(id, data) {
+  // Simulate database update
+  return { id, ...data, updated: new Date() };
 }
 
 async function deleteDataFromDatabase(id) {
   // Simulate a DB delete
   logger.info(`Deleted data for ID: ${id}`);
   return true;
+}
+
+async function insertDataIntoDatabase(id, data) {
+  // Simulate database insert
+  return { id, ...data, created: new Date() };
+}
+
+function generateId() {
+  // Simple ID generation, replace with a more robust method in production
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
 // Example route that publishes a message to the Redis Stream
@@ -175,9 +213,9 @@ setInterval(() => {
 /**
  * Start the server
  */
-const port = 3000;
-const server = app.listen(port, () => {
-  logger.info(`Server is running on port ${port}`);
+const PORT = 3000;
+const server = app.listen(PORT, () => {
+  logger.info(`Server is running on port ${PORT}`);
 });
 
 // Graceful shutdown
@@ -188,8 +226,14 @@ process.on('SIGTERM', async () => {
     logger.info('HTTP server closed.');
   });
 
+  await closePublisher();
   await redisPool.quit();
   logger.info('Redis connections closed.');
 
   process.exit(0);
+});
+
+app.use((err, req, res, next) => {
+  req.logger.error('Unhandled error', { error: err });
+  res.status(500).json({ message: "An unexpected error occurred", error: err.message });
 });

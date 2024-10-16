@@ -1,4 +1,4 @@
-const winston = require("../logger");
+const logger = require("../logger");
 const config = require("./config");
 const redisPool = require("../redis-pool");
 
@@ -6,7 +6,9 @@ let publisher;
 
 async function getPublisher() {
   if (!publisher) {
-    publisher = await redisPool.getDuplicatedConnection();
+    const baseConnection = await redisPool.getConnection();
+    publisher = baseConnection.duplicate();
+    logger.info('Duplicated Redis connection created for publisher');
   }
   return publisher;
 }
@@ -23,18 +25,28 @@ async function publishMessage(message) {
       "message",
       message
     );
-    winston.info(`Published message with ID: ${messageId}`);
+    logger.info('Message published', { 
+      messageId, 
+      streamKey: config.STREAM_KEY,
+      messageLength: message.length // Log message length instead of full message for privacy
+    });
     return messageId;
   } catch (error) {
-    winston.error(`Error publishing message: ${error.message}`);
+    logger.error('Error publishing message', { 
+      error: error.message, 
+      streamKey: config.STREAM_KEY,
+      messageLength: message.length
+    });
     throw error;
   }
 }
 
-process.on("SIGINT", async () => {
-  winston.info("Shutting down publisher...");
-  await publisher.quit();
-  process.exit(0);
-});
+// Graceful shutdown function
+async function closePublisher() {
+  if (publisher) {
+    await publisher.quit();
+    logger.info('Publisher connection closed');
+  }
+}
 
-module.exports = { publishMessage };
+module.exports = { publishMessage, closePublisher };

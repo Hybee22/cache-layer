@@ -11,6 +11,7 @@ class RedisPool {
       ...poolOptions
     };
     this.pool = [];
+    logger.info('Redis pool initialized', { redisUrl, poolOptions });
   }
 
   async getConnection() {
@@ -32,6 +33,7 @@ class RedisPool {
       });
 
       this.pool.push(client);
+      logger.debug('Redis connection acquired', { poolSize: this.pool.length });
       performanceMonitor.updateRedisPoolStats(this.pool.length, this.pool.filter(client => client.status === 'ready').length);
       return client;
     }
